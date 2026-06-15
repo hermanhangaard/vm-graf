@@ -87,10 +87,6 @@ h1 {
 .dot { transition: opacity 0.12s; }
 .dot.dim { opacity: 0.08; }
 .endmark { cursor: pointer; }
-.endmark .pname { fill: var(--chalk); font-family: var(--display); font-weight: 600;
-  paint-order: stroke; stroke: rgba(20,3,9,0.85); stroke-width: 3px; }
-.endmark .ppts { fill: var(--gold); font-family: var(--digits); font-weight: 700;
-  paint-order: stroke; stroke: rgba(20,3,9,0.85); stroke-width: 3px; }
 .endmark.dim { opacity: 0.12; transition: opacity 0.12s; }
 .endmark .initial { fill: #1a0309; font-family: var(--display); font-weight: 800;
   text-anchor: middle; dominant-baseline: central; }
@@ -163,7 +159,7 @@ h1 {
     </div>
     <h1>Poengutvikling</h1>
     <p class="sub">Hver linje er en deltaker · dagens stilling vist med portrett ·
-      sist oppdatert <b>15. jun 21:29</b></p>
+      sist oppdatert <b>15. jun 21:41</b></p>
   </header>
   <div class="chart-card">
     <div class="chart-wrap"><svg id="chart"></svg></div>
@@ -202,7 +198,7 @@ function draw() {
   const { W, H } = layout();
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-  const mL = 52, mR = 210, mT = 18, mB = 44;
+  const mL = 52, mR = 110, mT = 18, mB = 44;
   const x0 = mL, x1 = W - mR, y0 = H - mB, y1 = mT;
   const ndag = D.dager.length;            // antall punkter (inkl. Start)
   const lastX = D.dager[ndag - 1];
@@ -216,8 +212,8 @@ function draw() {
   const plotH = y0 - y1;
   const pxPP = plotH / Math.max(1, ymax);           // piksler per poeng
   const MK = Math.max(22, Math.min(46, Math.min(W * 0.04, pxPP * 1.05)));
-  const half = MK / 2, rx = 7, ex = X(lastX);
-  const step = Math.round(MK * 0.62);               // hvor mye hvert kort viftes ut
+  const half = MK / 2, ex = X(lastX);
+  const step = Math.round(MK * 0.62);               // hvor mye hvert portrett viftes ut
 
   // --- rutenett + akser ---
   const yStep = ymax > 60 ? 20 : ymax > 30 ? 10 : 5;
@@ -284,38 +280,25 @@ function draw() {
 
     members.forEach((i, k) => {
       const s = D.deltakere[i];
-      const cx = ex + k * step, bx = cx - half, by = yv - half;
+      const cx = ex + k * step, cy = yv, r = half;
       const g = el('g', { class: 'endmark', 'data-end': i });
-      // mørk bakplate gir tydelig kortkant mellom overlappende bilder
-      g.appendChild(el('rect', { x: bx - 1.5, y: by - 1.5, width: MK + 3, height: MK + 3,
-        rx: rx + 1, ry: rx + 1, fill: '#1a0309' }));
+      // mørk bakplate (litt større sirkel) gir tydelig kant mellom overlappende portretter
+      g.appendChild(el('circle', { cx, cy, r: r + 1.5, fill: '#1a0309' }));
       if (s.bilde) {
         const cid = 'clip' + i;
         const cp = el('clipPath', { id: cid });
-        cp.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx }));
+        cp.appendChild(el('circle', { cx, cy, r }));
         g.appendChild(cp);
-        g.appendChild(el('image', { x: bx, y: by, width: MK, height: MK,
+        g.appendChild(el('image', { x: cx - r, y: cy - r, width: MK, height: MK,
           'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice', href: s.bilde }));
       } else {
-        g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx, fill: s.farge }));
-        const ini = el('text', { class: 'initial', x: cx, y: yv, 'font-size': MK * 0.46 });
+        g.appendChild(el('circle', { cx, cy, r, fill: s.farge }));
+        const ini = el('text', { class: 'initial', x: cx, y: cy, 'font-size': MK * 0.46 });
         ini.textContent = s.initial; g.appendChild(ini);
       }
-      g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx,
-        fill: 'none', stroke: s.farge, 'stroke-width': 2.5 }));
-      if (members.length === 1) {                 // alenepunkt -> navn ved siden av
-        const nm = el('text', { class: 'pname', x: cx + half + 7, y: yv + 4,
-          'font-size': Math.max(12, MK * 0.4) });
-        nm.textContent = `${s.navn} · ${v}`; g.appendChild(nm);
-      }
+      g.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: s.farge, 'stroke-width': 2.5 }));
       svg.appendChild(g);
     });
-
-    if (members.length > 1) {                      // viftet punkt -> kun poeng til høyre
-      const lx = ex + (members.length - 1) * step + half + 8;
-      const nm = el('text', { class: 'pname', x: lx, y: yv + 4, 'font-size': Math.max(12, MK * 0.4) });
-      nm.textContent = `${v} p`; svg.appendChild(nm);
-    }
   });
 
   applyActive();

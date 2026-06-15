@@ -159,7 +159,7 @@ h1 {
     </div>
     <h1>Poengutvikling</h1>
     <p class="sub">Hver linje er en deltaker · dagens stilling vist med portrett ·
-      sist oppdatert <b>15. jun 22:29</b></p>
+      sist oppdatert <b>15. jun 22:32</b></p>
   </header>
   <div class="chart-card">
     <div class="chart-wrap"><svg id="chart"></svg></div>
@@ -182,13 +182,10 @@ let lastKey = null;         // siste hover-mål, for å unngå unødig re-tegnin
 const el = (n, a) => { const e = document.createElementNS(NS, n);
   for (const k in a) e.setAttribute(k, a[k]); return e; };
 
-function niceMax(v) { const step = v > 60 ? 20 : v > 30 ? 10 : 5;
-  return Math.max(step, Math.ceil(v / step) * step); }
-
 function layout() {
   const W = svg.clientWidth || 900;
   // høyere enn bred -> mer luft på y-aksen så bildene ikke ligger oppå hverandre
-  const H = Math.max(440, Math.min(900, W * 0.62));
+  const H = Math.max(420, Math.min(810, W * 0.56));
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('height', H);
   return { W, H };
@@ -202,16 +199,23 @@ function draw() {
   const x0 = mL, x1 = W - mR, y0 = H - mB, y1 = mT;
   const ndag = D.dager.length;            // antall punkter (inkl. Start)
   const lastX = D.dager[ndag - 1];
-  const ymax = niceMax(D.maxpoeng || 5);
+  // delt y-akse: historikk-sonen [0..split] komprimeres til en smal stripe nederst,
+  // dagens score-sone forstørres -> større portretter uten å miste klatre-historien
+  const _sc = D.deltakere.filter((_, i) => !hidden.has(i)).map(s => s.poeng[s.poeng.length - 1]);
+  const maxFinal = Math.max(5, ..._sc), minFinal = _sc.length ? Math.min(..._sc) : 0;
+  const ymax = maxFinal + 1;                         // litt luft over lederen
+  const split = Math.max(2, minFinal - 2);          // alt under dette = historikk-sone
+  const fA = 0.18;                                   // historikken får 18% av høyden
+  const ySplit = y0 - fA * (y0 - y1);               // pikselgrense mellom sonene
 
   const X = d => x0 + (x1 - x0) * (d / Math.max(1, lastX));
-  const Y = p => y0 + (y1 - y0) * (p / ymax);
+  const Y = p => p <= split
+    ? y0 + (ySplit - y0) * (p / split)                          // historikk: komprimert
+    : ySplit + (y1 - ySplit) * ((p - split) / (ymax - split)); // dagens score: forstørret
 
-  // markørstørrelse ~ avstanden mellom to nabopoeng, så nabo-score akkurat tangerer
-  // hverandre i stedet for å stable seg oppå hverandre
-  const plotH = y0 - y1;
-  const pxPP = plotH / Math.max(1, ymax);           // piksler per poeng
-  const MK = Math.max(22, Math.min(46, Math.min(W * 0.04, pxPP * 1.05)));
+  // bildestørrelse styres av score-sonens px-per-poeng (mye større enn med full skala)
+  const zoneBpx = (ySplit - y1) / Math.max(1, ymax - split);
+  const MK = Math.max(26, Math.min(70, Math.min(W * 0.06, zoneBpx * 1.05)));
   const half = MK / 2, ex = X(lastX);
   const step = Math.round(MK * 0.62);               // hvor mye hvert portrett viftes ut
 
@@ -233,6 +237,8 @@ function draw() {
   }
   svg.appendChild(el('line', { class: 'axis-line', x1: x0, x2: x1, y1: y0, y2: y0 }));
   svg.appendChild(el('line', { class: 'axis-line', x1: x0, x2: x0, y1: y0, y2: y1 }));
+  svg.appendChild(el('line', { x1: x0, x2: x1, y1: ySplit, y2: ySplit,        // sone-skille
+    stroke: '#9db4ff', 'stroke-width': 1, 'stroke-dasharray': '5 4', opacity: 0.45 }));
 
   const yt = el('text', { class: 'axis-title', x: x0 - 38, y: (y0 + y1) / 2,
     'text-anchor': 'middle', 'font-size': 13,

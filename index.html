@@ -163,7 +163,7 @@ h1 {
     </div>
     <h1>Poengutvikling</h1>
     <p class="sub">Hver linje er en deltaker · dagens stilling vist med portrett ·
-      sist oppdatert <b>15. jun 21:10</b></p>
+      sist oppdatert <b>15. jun 21:29</b></p>
   </header>
   <div class="chart-card">
     <div class="chart-wrap"><svg id="chart"></svg></div>
@@ -191,8 +191,8 @@ function niceMax(v) { const step = v > 60 ? 20 : v > 30 ? 10 : 5;
 
 function layout() {
   const W = svg.clientWidth || 900;
-  // høyde skalerer med bredde, men holdes lesbar
-  const H = Math.max(360, Math.min(680, W * 0.52));
+  // høyere enn bred -> mer luft på y-aksen så bildene ikke ligger oppå hverandre
+  const H = Math.max(440, Math.min(900, W * 0.62));
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('height', H);
   return { W, H };
@@ -210,6 +210,14 @@ function draw() {
 
   const X = d => x0 + (x1 - x0) * (d / Math.max(1, lastX));
   const Y = p => y0 + (y1 - y0) * (p / ymax);
+
+  // markørstørrelse ~ avstanden mellom to nabopoeng, så nabo-score akkurat tangerer
+  // hverandre i stedet for å stable seg oppå hverandre
+  const plotH = y0 - y1;
+  const pxPP = plotH / Math.max(1, ymax);           // piksler per poeng
+  const MK = Math.max(22, Math.min(46, Math.min(W * 0.04, pxPP * 1.05)));
+  const half = MK / 2, rx = 7, ex = X(lastX);
+  const step = Math.round(MK * 0.62);               // hvor mye hvert kort viftes ut
 
   // --- rutenett + akser ---
   const yStep = ymax > 60 ? 20 : ymax > 30 ? 10 : 5;
@@ -239,9 +247,13 @@ function draw() {
   xt.textContent = 'Spilledag'; svg.appendChild(xt);
 
   // --- linjer (+ usynlig bred trefflinje så tynne linjer er lette å peke på) ---
+  // siste punkt kappes ved venstrekanten av første kort, så linja stopper der
+  // punktet er og ikke løper inn over bildene
+  const lastJ = D.dager.length - 1;
   D.deltakere.forEach((s, i) => {
     if (hidden.has(i)) return;
-    const pts = s.poeng.map((p, j) => `${X(D.dager[j])},${Y(p)}`).join(' ');
+    const pts = s.poeng.map((p, j) =>
+      `${j === lastJ ? (ex - half - 1) : X(D.dager[j])},${Y(p)}`).join(' ');
     svg.appendChild(el('polyline', { class: 'serie', points: pts, stroke: s.farge,
       'data-line': i }));
     svg.appendChild(el('polyline', { points: pts, fill: 'none', stroke: 'transparent',
@@ -256,11 +268,6 @@ function draw() {
   // Uavgjort (lik poengsum) faller på samme koordinat -> portrettene vifter
   // mot høyre som en kortstokk. Hvert bilde er sitt eget markørpunkt (hover
   // uthever den ene). Færre deler poeng utover i turneringen.
-  const plotH = y0 - y1;
-  const MK = Math.max(20, Math.min(42, Math.min(W * 0.032, (plotH / Math.max(1, ymax)) * 1.5)));
-  const half = MK / 2, rx = 7, ex = X(lastX);
-  const step = Math.round(MK * 0.62);             // hvor mye hvert kort stikker ut
-
   const groups = new Map();                       // poengsum -> [idx, ...]
   D.deltakere.forEach((s, i) => {
     if (hidden.has(i)) return;

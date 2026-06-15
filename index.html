@@ -94,7 +94,9 @@ h1 {
 .endmark.dim { opacity: 0.12; transition: opacity 0.12s; }
 .endmark .initial { fill: #1a0309; font-family: var(--display); font-weight: 800;
   text-anchor: middle; dominant-baseline: central; }
-.connector { stroke-width: 1; stroke-dasharray: 2 2; opacity: 0.5; }
+.endmark .clabel { fill: #fff; font-family: var(--display); font-weight: 800;
+  text-anchor: middle; dominant-baseline: central;
+  paint-order: stroke; stroke: rgba(20,3,9,0.45); stroke-width: 2px; }
 
 /* Tooltip */
 .tooltip {
@@ -164,7 +166,7 @@ h1 {
     </div>
     <h1>Poengutvikling</h1>
     <p class="sub">Hver linje er en deltaker · dagens stilling vist med portrett ·
-      sist oppdatert <b>15. jun 20:42</b></p>
+      sist oppdatert <b>15. jun 20:56</b></p>
   </header>
   <div class="chart-card">
     <div class="chart-wrap"><svg id="chart"></svg></div>
@@ -181,7 +183,8 @@ const NS = 'http://www.w3.org/2000/svg';
 const tip = document.getElementById('tooltip');
 const legend = document.getElementById('legend');
 const hidden = new Set();   // skjulte deltakere (klikk i legend)
-let active = null;          // idx for uthevet deltaker
+let active = new Set();     // uthevede deltakere (idx)
+let lastKey = null;         // siste hover-mål, for å unngå unødig re-tegning
 
 const el = (n, a) => { const e = document.createElementNS(NS, n);
   for (const k in a) e.setAttribute(k, a[k]); return e; };
@@ -252,106 +255,128 @@ function draw() {
     });
   });
 
-  // --- endemarkører (portrett/initialer) med kollisjonsunngåelse ---
-  const nVis = D.deltakere.length - hidden.size;
+  // --- endemarkører: alltid på sitt EKTE punkt (ingen forskyvning) ---
+  // Uavgjort (lik poengsum) faller på nøyaktig samme koordinat -> slås sammen
+  // til én grå klynge-avatar med antall. Hvem som er i klyngen vises ved hover
+  // og i den alltid-synlige tabellen under.
   const plotH = y0 - y1;
-  // krymp markøren så alle får plass i høyden når mange er synlige
-  const MK = Math.max(18, Math.min(40, Math.min(W * 0.034, plotH / Math.max(1, nVis) - 5)));
-  const gap = MK + 5;
-  const ends = D.deltakere
-    .map((s, i) => ({ i, s, yReal: Y(s.poeng[s.poeng.length - 1]) }))
-    .filter(e => !hidden.has(e.i))
-    .sort((a, b) => a.yReal - b.yReal);          // øverst (høyest poeng) først
-  if (ends.length) {
-    ends[0].yPlaced = ends[0].yReal;             // skyv nedover for å holde avstand
-    for (let k = 1; k < ends.length; k++)
-      ends[k].yPlaced = Math.max(ends[k].yReal, ends[k - 1].yPlaced + gap);
-    if (ends[ends.length - 1].yPlaced > y0) {    // overflyt under aksen -> skyv stacken opp
-      ends[ends.length - 1].yPlaced = y0;
-      for (let k = ends.length - 2; k >= 0; k--)
-        ends[k].yPlaced = Math.min(ends[k].yPlaced, ends[k + 1].yPlaced - gap);
-    }
-  }
+  const MK = Math.max(20, Math.min(42, Math.min(W * 0.032, (plotH / Math.max(1, ymax)) * 1.5)));
+  const half = MK / 2, rx = 7, ex = X(lastX);
 
-  const ex = X(lastX);
-  ends.forEach(e => {
-    const yP = e.yPlaced;
-    const g = el('g', { class: 'endmark', 'data-end': e.i });
-    if (Math.abs(yP - e.yReal) > 1)
-      g.appendChild(el('line', { class: 'connector', stroke: e.s.farge,
-        x1: ex, y1: e.yReal, x2: ex, y2: yP }));
-    const half = MK / 2, rx = 7;
-    const bx = ex - half, by = yP - half;
-    if (e.s.bilde) {
-      const cid = 'clip' + e.i;
-      const cp = el('clipPath', { id: cid });
-      cp.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx }));
-      g.appendChild(cp);
-      g.appendChild(el('image', { x: bx, y: by, width: MK, height: MK,
-        'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice', href: e.s.bilde }));
-    } else {
+  const groups = new Map();                       // poengsum -> [idx, ...]
+  D.deltakere.forEach((s, i) => {
+    if (hidden.has(i)) return;
+    const v = s.poeng[s.poeng.length - 1];
+    if (!groups.has(v)) groups.set(v, []);
+    groups.get(v).push(i);
+  });
+
+  // tegn lavest poeng først, så høyere havner øverst der markører overlapper
+  [...groups.keys()].sort((a, b) => a - b).forEach(v => {
+    const members = groups.get(v);
+    const yv = Y(v), bx = ex - half, by = yv - half;
+
+    if (members.length === 1) {
+      const i = members[0], s = D.deltakere[i];
+      const g = el('g', { class: 'endmark', 'data-end': i });
+      if (s.bilde) {
+        const cid = 'clip' + i;
+        const cp = el('clipPath', { id: cid });
+        cp.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx }));
+        g.appendChild(cp);
+        g.appendChild(el('image', { x: bx, y: by, width: MK, height: MK,
+          'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice', href: s.bilde }));
+      } else {
+        g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx, fill: s.farge }));
+        const ini = el('text', { class: 'initial', x: ex, y: yv, 'font-size': MK * 0.46 });
+        ini.textContent = s.initial; g.appendChild(ini);
+      }
       g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx,
-        fill: e.s.farge }));
-      const ini = el('text', { class: 'initial', x: ex, y: yP, 'font-size': MK * 0.46 });
-      ini.textContent = e.s.initial; g.appendChild(ini);
+        fill: 'none', stroke: s.farge, 'stroke-width': 2.5 }));
+      const nm = el('text', { class: 'pname', x: ex + half + 7, y: yv + 4,
+        'font-size': Math.max(12, MK * 0.4) });
+      nm.textContent = `${s.navn} · ${v}`; g.appendChild(nm);
+      svg.appendChild(g);
+    } else {
+      // grå klynge-avatar med stablet-kort-effekt + «+N»
+      const g = el('g', { class: 'endmark', 'data-cluster': members.join(',') });
+      g.appendChild(el('rect', { x: bx + 4, y: by - 4, width: MK, height: MK, rx, ry: rx,
+        fill: '#5d4a51', opacity: 0.55 }));
+      g.appendChild(el('rect', { x: bx + 2, y: by - 2, width: MK, height: MK, rx, ry: rx,
+        fill: '#6f5a62', opacity: 0.8 }));
+      g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx,
+        fill: '#8a767d', stroke: '#e7d7dc', 'stroke-width': 2 }));
+      const cnt = el('text', { class: 'clabel', x: ex, y: yv, 'font-size': MK * 0.4 });
+      cnt.textContent = '+' + (members.length - 1); g.appendChild(cnt);
+      const nm = el('text', { class: 'pname', x: ex + half + 7, y: yv + 4,
+        'font-size': Math.max(12, MK * 0.4) });
+      nm.textContent = `${members.length} stk · ${v}`; g.appendChild(nm);
+      svg.appendChild(g);
     }
-    g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx,
-      fill: 'none', stroke: e.s.farge, 'stroke-width': 2.5 }));
-    const nm = el('text', { class: 'pname', x: ex + half + 7, y: yP - 1,
-      'font-size': Math.max(13, MK * 0.4) });
-    nm.textContent = e.s.navn; g.appendChild(nm);
-    const pt = el('text', { class: 'ppts', x: ex + half + 7, y: yP + Math.max(13, MK * 0.4),
-      'font-size': Math.max(11, MK * 0.33) });
-    pt.textContent = e.s.poeng[e.s.poeng.length - 1] + ' p'; g.appendChild(pt);
-    svg.appendChild(g);
   });
 
   applyActive();
 }
 
 function applyActive() {
-  svg.querySelectorAll('[data-line]').forEach(n => {
-    const i = +n.dataset.line;
-    n.classList.toggle('dim', active !== null && i !== active);
-    n.classList.toggle('hot', active === i);
-    if (active === i) n.parentNode.appendChild(n);  // bring to front
+  const on = active.size > 0;
+  svg.querySelectorAll('[data-line],[data-dot]').forEach(n => {
+    const i = +(n.dataset.line ?? n.dataset.dot);
+    n.classList.toggle('dim', on && !active.has(i));
+    if (n.dataset.line !== undefined) {
+      n.classList.toggle('hot', active.has(i));
+      if (active.has(i)) n.parentNode.appendChild(n);   // bring to front
+    }
   });
-  svg.querySelectorAll('[data-dot]').forEach(n =>
-    n.classList.toggle('dim', active !== null && +n.dataset.dot !== active));
   svg.querySelectorAll('[data-end]').forEach(n => {
     const i = +n.dataset.end;
-    n.classList.toggle('dim', active !== null && i !== active);
-    if (active === i) n.parentNode.appendChild(n);
+    n.classList.toggle('dim', on && !active.has(i));
+    if (active.has(i)) n.parentNode.appendChild(n);
+  });
+  svg.querySelectorAll('[data-cluster]').forEach(n => {
+    const any = n.dataset.cluster.split(',').some(i => active.has(+i));
+    n.classList.toggle('dim', on && !any);
+    if (any) n.parentNode.appendChild(n);
   });
   legend.querySelectorAll('.leg').forEach(n => {
-    const i = +n.dataset.leg;
-    n.style.background = active === i ? 'rgba(0,0,0,0.4)' : '';
+    n.style.background = active.has(+n.dataset.leg) ? 'rgba(0,0,0,0.4)' : '';
   });
 }
 
-function setActive(i) { active = i; applyActive(); }
-function clearActive() { active = null; applyActive(); }
+function setActive(idxs) { active = new Set(idxs); applyActive(); }
+function clearActive() { active = new Set(); applyActive(); }
+
+function rankOf(s) { return D.deltakere.filter(o => o.total > s.total).length + 1; }
 
 function showTip(i, evt) {
   const s = D.deltakere[i];
-  const rank = D.deltakere.filter(o => o.total > s.total).length + 1;
   tip.innerHTML = `<div class="tt-name">${s.navn}</div>` +
-    `<div class="tt-meta"><b>${s.total} p</b> · plass ${rank}</div>`;
-  tip.style.left = evt.clientX + 'px';
-  tip.style.top = evt.clientY + 'px';
-  tip.style.opacity = 1;
+    `<div class="tt-meta"><b>${s.total} p</b> · plass ${rankOf(s)}</div>`;
+  posTip(evt);
 }
+function showTipMulti(idxs, evt) {
+  const v = D.deltakere[idxs[0]].total;
+  const navn = idxs.map(i => D.deltakere[i].navn).join(', ');
+  tip.innerHTML = `<div class="tt-name">${idxs.length} på ${v} p</div>` +
+    `<div class="tt-meta">${navn}</div>`;
+  posTip(evt);
+}
+function posTip(evt) { tip.style.left = evt.clientX + 'px';
+  tip.style.top = evt.clientY + 'px'; tip.style.opacity = 1; }
 function hideTip() { tip.style.opacity = 0; }
 
 // hendelser via delegering (overlever re-tegning)
 svg.addEventListener('mousemove', e => {
-  const t = e.target.closest('[data-line],[data-end],[data-dot]');
-  if (!t) { if (active !== null) { clearActive(); hideTip(); } return; }
-  const i = +(t.dataset.line ?? t.dataset.end ?? t.dataset.dot);
-  if (i !== active) setActive(i);
-  showTip(i, e);
+  const t = e.target.closest('[data-line],[data-dot],[data-end],[data-cluster]');
+  if (!t) { if (active.size) { clearActive(); hideTip(); } lastKey = null; return; }
+  const isC = t.dataset.cluster !== undefined;
+  const idxs = isC ? t.dataset.cluster.split(',').map(Number)
+                   : [+(t.dataset.line ?? t.dataset.dot ?? t.dataset.end)];
+  const key = (isC ? 'c' : 's') + idxs.join(',');
+  if (key !== lastKey) { lastKey = key; setActive(idxs); }
+  if (isC) showTipMulti(idxs, e); else showTip(idxs[0], e);
 });
-svg.addEventListener('mouseleave', () => { clearActive(); hideTip(); });
+svg.addEventListener('mouseleave', () => { clearActive(); hideTip(); lastKey = null; });
 
 // legend
 D.deltakere.forEach((s, i) => {
@@ -361,13 +386,13 @@ D.deltakere.forEach((s, i) => {
   row.innerHTML = `<span class="rank">${rank}.</span>` +
     `<span class="sw" style="background:${s.farge}"></span>` +
     `<span class="lname">${s.navn}</span><span class="lpts">${s.total}</span>`;
-  row.addEventListener('mouseenter', e => { if (!hidden.has(i)) { setActive(i); showTip(i, e); } });
+  row.addEventListener('mouseenter', e => { if (!hidden.has(i)) { setActive([i]); showTip(i, e); } });
   row.addEventListener('mousemove', e => { if (!hidden.has(i)) showTip(i, e); });
   row.addEventListener('mouseleave', () => { clearActive(); hideTip(); });
   row.addEventListener('click', () => {
     if (hidden.has(i)) hidden.delete(i); else hidden.add(i);
     row.classList.toggle('off', hidden.has(i));
-    active = null; draw();
+    active = new Set(); lastKey = null; draw();
   });
   legend.appendChild(row);
 });

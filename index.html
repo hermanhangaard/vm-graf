@@ -94,9 +94,6 @@ h1 {
 .endmark.dim { opacity: 0.12; transition: opacity 0.12s; }
 .endmark .initial { fill: #1a0309; font-family: var(--display); font-weight: 800;
   text-anchor: middle; dominant-baseline: central; }
-.endmark .clabel { fill: #fff; font-family: var(--display); font-weight: 800;
-  text-anchor: middle; dominant-baseline: central;
-  paint-order: stroke; stroke: rgba(20,3,9,0.45); stroke-width: 2px; }
 
 /* Tooltip */
 .tooltip {
@@ -166,7 +163,7 @@ h1 {
     </div>
     <h1>Poengutvikling</h1>
     <p class="sub">Hver linje er en deltaker · dagens stilling vist med portrett ·
-      sist oppdatert <b>15. jun 20:56</b></p>
+      sist oppdatert <b>15. jun 21:10</b></p>
   </header>
   <div class="chart-card">
     <div class="chart-wrap"><svg id="chart"></svg></div>
@@ -205,7 +202,7 @@ function draw() {
   const { W, H } = layout();
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-  const mL = 52, mR = 188, mT = 18, mB = 44;
+  const mL = 52, mR = 210, mT = 18, mB = 44;
   const x0 = mL, x1 = W - mR, y0 = H - mB, y1 = mT;
   const ndag = D.dager.length;            // antall punkter (inkl. Start)
   const lastX = D.dager[ndag - 1];
@@ -256,12 +253,13 @@ function draw() {
   });
 
   // --- endemarkører: alltid på sitt EKTE punkt (ingen forskyvning) ---
-  // Uavgjort (lik poengsum) faller på nøyaktig samme koordinat -> slås sammen
-  // til én grå klynge-avatar med antall. Hvem som er i klyngen vises ved hover
-  // og i den alltid-synlige tabellen under.
+  // Uavgjort (lik poengsum) faller på samme koordinat -> portrettene vifter
+  // mot høyre som en kortstokk. Hvert bilde er sitt eget markørpunkt (hover
+  // uthever den ene). Færre deler poeng utover i turneringen.
   const plotH = y0 - y1;
   const MK = Math.max(20, Math.min(42, Math.min(W * 0.032, (plotH / Math.max(1, ymax)) * 1.5)));
   const half = MK / 2, rx = 7, ex = X(lastX);
+  const step = Math.round(MK * 0.62);             // hvor mye hvert kort stikker ut
 
   const groups = new Map();                       // poengsum -> [idx, ...]
   D.deltakere.forEach((s, i) => {
@@ -273,12 +271,17 @@ function draw() {
 
   // tegn lavest poeng først, så høyere havner øverst der markører overlapper
   [...groups.keys()].sort((a, b) => a - b).forEach(v => {
-    const members = groups.get(v);
-    const yv = Y(v), bx = ex - half, by = yv - half;
+    const members = groups.get(v).slice()
+      .sort((a, b) => D.deltakere[a].navn.localeCompare(D.deltakere[b].navn, 'no'));
+    const yv = Y(v);
 
-    if (members.length === 1) {
-      const i = members[0], s = D.deltakere[i];
+    members.forEach((i, k) => {
+      const s = D.deltakere[i];
+      const cx = ex + k * step, bx = cx - half, by = yv - half;
       const g = el('g', { class: 'endmark', 'data-end': i });
+      // mørk bakplate gir tydelig kortkant mellom overlappende bilder
+      g.appendChild(el('rect', { x: bx - 1.5, y: by - 1.5, width: MK + 3, height: MK + 3,
+        rx: rx + 1, ry: rx + 1, fill: '#1a0309' }));
       if (s.bilde) {
         const cid = 'clip' + i;
         const cp = el('clipPath', { id: cid });
@@ -288,30 +291,23 @@ function draw() {
           'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice', href: s.bilde }));
       } else {
         g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx, fill: s.farge }));
-        const ini = el('text', { class: 'initial', x: ex, y: yv, 'font-size': MK * 0.46 });
+        const ini = el('text', { class: 'initial', x: cx, y: yv, 'font-size': MK * 0.46 });
         ini.textContent = s.initial; g.appendChild(ini);
       }
       g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx,
         fill: 'none', stroke: s.farge, 'stroke-width': 2.5 }));
-      const nm = el('text', { class: 'pname', x: ex + half + 7, y: yv + 4,
-        'font-size': Math.max(12, MK * 0.4) });
-      nm.textContent = `${s.navn} · ${v}`; g.appendChild(nm);
+      if (members.length === 1) {                 // alenepunkt -> navn ved siden av
+        const nm = el('text', { class: 'pname', x: cx + half + 7, y: yv + 4,
+          'font-size': Math.max(12, MK * 0.4) });
+        nm.textContent = `${s.navn} · ${v}`; g.appendChild(nm);
+      }
       svg.appendChild(g);
-    } else {
-      // grå klynge-avatar med stablet-kort-effekt + «+N»
-      const g = el('g', { class: 'endmark', 'data-cluster': members.join(',') });
-      g.appendChild(el('rect', { x: bx + 4, y: by - 4, width: MK, height: MK, rx, ry: rx,
-        fill: '#5d4a51', opacity: 0.55 }));
-      g.appendChild(el('rect', { x: bx + 2, y: by - 2, width: MK, height: MK, rx, ry: rx,
-        fill: '#6f5a62', opacity: 0.8 }));
-      g.appendChild(el('rect', { x: bx, y: by, width: MK, height: MK, rx, ry: rx,
-        fill: '#8a767d', stroke: '#e7d7dc', 'stroke-width': 2 }));
-      const cnt = el('text', { class: 'clabel', x: ex, y: yv, 'font-size': MK * 0.4 });
-      cnt.textContent = '+' + (members.length - 1); g.appendChild(cnt);
-      const nm = el('text', { class: 'pname', x: ex + half + 7, y: yv + 4,
-        'font-size': Math.max(12, MK * 0.4) });
-      nm.textContent = `${members.length} stk · ${v}`; g.appendChild(nm);
-      svg.appendChild(g);
+    });
+
+    if (members.length > 1) {                      // viftet punkt -> kun poeng til høyre
+      const lx = ex + (members.length - 1) * step + half + 8;
+      const nm = el('text', { class: 'pname', x: lx, y: yv + 4, 'font-size': Math.max(12, MK * 0.4) });
+      nm.textContent = `${v} p`; svg.appendChild(nm);
     }
   });
 
@@ -333,11 +329,6 @@ function applyActive() {
     n.classList.toggle('dim', on && !active.has(i));
     if (active.has(i)) n.parentNode.appendChild(n);
   });
-  svg.querySelectorAll('[data-cluster]').forEach(n => {
-    const any = n.dataset.cluster.split(',').some(i => active.has(+i));
-    n.classList.toggle('dim', on && !any);
-    if (any) n.parentNode.appendChild(n);
-  });
   legend.querySelectorAll('.leg').forEach(n => {
     n.style.background = active.has(+n.dataset.leg) ? 'rgba(0,0,0,0.4)' : '';
   });
@@ -354,27 +345,17 @@ function showTip(i, evt) {
     `<div class="tt-meta"><b>${s.total} p</b> · plass ${rankOf(s)}</div>`;
   posTip(evt);
 }
-function showTipMulti(idxs, evt) {
-  const v = D.deltakere[idxs[0]].total;
-  const navn = idxs.map(i => D.deltakere[i].navn).join(', ');
-  tip.innerHTML = `<div class="tt-name">${idxs.length} på ${v} p</div>` +
-    `<div class="tt-meta">${navn}</div>`;
-  posTip(evt);
-}
 function posTip(evt) { tip.style.left = evt.clientX + 'px';
   tip.style.top = evt.clientY + 'px'; tip.style.opacity = 1; }
 function hideTip() { tip.style.opacity = 0; }
 
 // hendelser via delegering (overlever re-tegning)
 svg.addEventListener('mousemove', e => {
-  const t = e.target.closest('[data-line],[data-dot],[data-end],[data-cluster]');
+  const t = e.target.closest('[data-line],[data-dot],[data-end]');
   if (!t) { if (active.size) { clearActive(); hideTip(); } lastKey = null; return; }
-  const isC = t.dataset.cluster !== undefined;
-  const idxs = isC ? t.dataset.cluster.split(',').map(Number)
-                   : [+(t.dataset.line ?? t.dataset.dot ?? t.dataset.end)];
-  const key = (isC ? 'c' : 's') + idxs.join(',');
-  if (key !== lastKey) { lastKey = key; setActive(idxs); }
-  if (isC) showTipMulti(idxs, e); else showTip(idxs[0], e);
+  const i = +(t.dataset.line ?? t.dataset.dot ?? t.dataset.end);
+  if (i !== lastKey) { lastKey = i; setActive([i]); }
+  showTip(i, e);
 });
 svg.addEventListener('mouseleave', () => { clearActive(); hideTip(); lastKey = null; });
 

@@ -159,7 +159,7 @@ h1 {
     </div>
     <h1>Poengutvikling</h1>
     <p class="sub">Hver linje er en deltaker · dagens stilling vist med portrett ·
-      sist oppdatert <b>16. jun 11:34</b></p>
+      sist oppdatert <b>16. jun 11:35</b></p>
   </header>
   <div class="chart-card">
     <div class="chart-wrap"><svg id="chart"></svg></div>
@@ -185,7 +185,7 @@ const el = (n, a) => { const e = document.createElementNS(NS, n);
 function layout() {
   const W = svg.clientWidth || 900;
   // høyere enn bred -> mer luft på y-aksen så bildene ikke ligger oppå hverandre
-  const H = Math.max(420, Math.min(810, W * 0.56));
+  const H = Math.max(400, Math.min(740, W * 0.51));
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('height', H);
   return { W, H };
